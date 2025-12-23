@@ -29,7 +29,7 @@ IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}.cli-migrations-v3"
 
 ENGINE_BIN="$CACHE_DIR/graphql-engine"
 CLI_BIN="$CACHE_DIR/hasura-cli"
-ORAS_BIN="$CACHE_DIR/oras"
+CRANE_BIN="$CACHE_DIR/crane"
 
 OS="linux"
 ARCH="amd64"
@@ -40,33 +40,21 @@ ARCH="amd64"
 if [ -f "$ENGINE_BIN" ] && [ -f "$CLI_BIN" ]; then
   echo "-----> Using Hasura binaries from cache"
 else
-  # --------------------------------------------------------------------
-  # Install oras (static binary)
-  # --------------------------------------------------------------------
-  if [ ! -f "$ORAS_BIN" ]; then
-    echo "-----> Installing oras"
-    curl -fsSL \
-      https://github.com/oras-project/oras/releases/download/v1.2.0/oras_1.2.0_${OS}_${ARCH}.tar.gz \
-      | tar -xz -C "$CACHE_DIR" oras
-  fi
-  chmod +x "$ORAS_BIN"
+  echo "-----> Installing crane (for daemonless image export)"
+  # The go-containerregistry release tarball contains crane (and others).  [oai_citation:2‡Google Cloud Documentation](https://docs.cloud.google.com/artifact-registry/docs/docker/copy-images?utm_source=chatgpt.com)
+  curl -fsSL \
+    https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz \
+    | tar -xz -C "$CACHE_DIR" crane
+  chmod +x "$CRANE_BIN"
 
-  echo "-----> Pulling ${IMAGE_TAG} (no Docker)"
-
+  echo "-----> Pulling ${IMAGE_TAG} (no Docker) and extracting /bin/graphql-engine and /bin/hasura-cli"
   TMP_DIR="$(mktemp -d)"
+  trap 'rm -rf "$TMP_DIR"' EXIT
 
-  "$ORAS_BIN" pull \
-    "$IMAGE_TAG" \
-    --output "$TMP_DIR" \
-    --artifact-type application/vnd.oci.image.layer.v1.tar
-
-  # Find and extract layer containing /bin
-  for layer in "$TMP_DIR"/*.tar; do
-    if tar -tf "$layer" | grep -q "^bin/graphql-engine$"; then
-      tar -xf "$layer" -C "$TMP_DIR" bin/graphql-engine bin/hasura-cli
-      break
-    fi
-  done
+  # crane export emits a tar of the image filesystem.  [oai_citation:3‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
+  # IMPORTANT: tar paths must NOT start with '/'.  [oai_citation:4‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
+  "$CRANE_BIN" export "$IMAGE_TAG" - \
+    | tar -C "$TMP_DIR" -xf - bin/graphql-engine bin/hasura-cli
 
   mv "$TMP_DIR/bin/graphql-engine" "$ENGINE_BIN"
   mv "$TMP_DIR/bin/hasura-cli" "$CLI_BIN"
