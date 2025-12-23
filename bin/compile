@@ -1,64 +1,87 @@
 #!/usr/bin/env bash
-# bin/compile <build-dir> <cache-dir> <env-dir>
-# $HOME: /app
-
-# -e - always exit on error
-# -o pipefail - don't ignore exit codes when piping output
-# set -eo pipefail
+set -eo pipefail
 
 BUILD_DIR=${1:-.}
-CACHE_DIR=${2:-}
+CACHE_DIR=${2:-/tmp/cache}
 ENV_DIR=${3:-}
-BP_DIR=$(cd "$(dirname "${0:-}")"; cd ..; pwd)
 
-HEROKU_DIR=$BUILD_DIR/.heroku
-BIN_DIR=$HEROKU_DIR/bin
-# make directories
-mkdir -p $CACHE_DIR $BIN_DIR
+HEROKU_DIR="$BUILD_DIR/.heroku"
+BIN_DIR="$HEROKU_DIR/bin"
 
-# Export the content of the ENV_DIR into the environment
+mkdir -p "$CACHE_DIR" "$BIN_DIR"
+
+# Export ENV_DIR vars
 if [ -d "$ENV_DIR" ]; then
-  for e in $(ls $ENV_DIR); do
-    export "$e=$(cat $ENV_DIR/$e)"
+  for e in $(ls "$ENV_DIR"); do
+    export "$e=$(cat "$ENV_DIR/$e")"
   done
 fi
 
-# Set a default version if HASURA_VERSION is not set
+# Versions
 HASURA_IMAGE="${HASURA_IMAGE:-hasura/graphql-engine}"
-HASURA_VERSION=${HASURA_VERSION:-"v2.48.6"}
+HASURA_VERSION="${HASURA_VERSION:-v2.48.6}"
 
-if [[ -n $HASURA_VERSION ]]
-then
-  # prepend a v to version numbers, eg 1.0.19 -> v1.0.19
-  if [[ $HASURA_VERSION =~ ^[0-9] ]]; then
-    HASURA_VERSION="v${HASURA_VERSION}"
-  fi
+if [[ $HASURA_VERSION =~ ^[0-9] ]]; then
+  HASURA_VERSION="v${HASURA_VERSION}"
 fi
 
-HASURA_IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}.cli-migrations-v3"
-HASURA_ENGINE_BINARY="$CACHE_DIR/graphql-engine"
-HASURA_CLI_BINARY="$CACHE_DIR/hasura-cli"
+IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}.cli-migrations-v3"
 
-if [ -f $HASURA_ENGINE_BINARY ] && [ -f $HASURA_CLI_BINARY ]; then
-  echo "-----> Using hasura binaries from cache"
+ENGINE_BIN="$CACHE_DIR/graphql-engine"
+CLI_BIN="$CACHE_DIR/hasura-cli"
+ORAS_BIN="$CACHE_DIR/oras"
+
+OS="linux"
+ARCH="amd64"
+
+# --------------------------------------------------------------------
+# Fetch binaries from OCI image
+# --------------------------------------------------------------------
+if [ -f "$ENGINE_BIN" ] && [ -f "$CLI_BIN" ]; then
+  echo "-----> Using Hasura binaries from cache"
 else
-  echo "Fetching Hasura image {{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3"
-  docker pull "{{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3"
-  CID=$(docker create "{{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3")
-  echo "Copying graphql-engine binary"
-  docker cp "$CID:/bin/graphql-engine" $HASURA_ENGINE_BINARY
-  docker cp "$CID:/bin/hasura-cli" $HASURA_CLI_BINARY
+  # --------------------------------------------------------------------
+  # Install oras (static binary)
+  # --------------------------------------------------------------------
+  if [ ! -f "$ORAS_BIN" ]; then
+    echo "-----> Installing oras"
+    curl -fsSL \
+      https://github.com/oras-project/oras/releases/download/v1.2.0/oras_1.2.0_${OS}_${ARCH}.tar.gz \
+      | tar -xz -C "$CACHE_DIR" oras
+  fi
+  chmod +x "$ORAS_BIN"
+
+  echo "-----> Pulling ${IMAGE_TAG} (no Docker)"
+
+  TMP_DIR="$(mktemp -d)"
+
+  "$ORAS_BIN" pull \
+    "$IMAGE_TAG" \
+    --output "$TMP_DIR" \
+    --artifact-type application/vnd.oci.image.layer.v1.tar
+
+  # Find and extract layer containing /bin
+  for layer in "$TMP_DIR"/*.tar; do
+    if tar -tf "$layer" | grep -q "^bin/graphql-engine$"; then
+      tar -xf "$layer" -C "$TMP_DIR" bin/graphql-engine bin/hasura-cli
+      break
+    fi
+  done
+
+  mv "$TMP_DIR/bin/graphql-engine" "$ENGINE_BIN"
+  mv "$TMP_DIR/bin/hasura-cli" "$CLI_BIN"
 fi
 
-echo "-----> Setting permissions"
-chmod +x $HASURA_ENGINE_BINARY
-chmod +x $HASURA_CLI_BINARY
+# --------------------------------------------------------------------
+# Install
+# --------------------------------------------------------------------
+chmod +x "$ENGINE_BIN" "$CLI_BIN"
 
-echo "-----> Moving binary to the right place"
-cp $HASURA_ENGINE_BINARY $BIN_DIR/graphql-engine
-cp $HASURA_CLI_BINARY $BIN_DIR/hasura-cli
+cp "$ENGINE_BIN" "$BIN_DIR/graphql-engine"
+cp "$CLI_BIN" "$BIN_DIR/hasura-cli"
 
 export PATH="$BIN_DIR:$PATH"
+
 echo "-----> Installed Hasura:"
 graphql-engine version
 hasura-cli version
