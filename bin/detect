@@ -1,0 +1,4 @@
+#!/bin/bash
+# This buildpack always runs for rezibase apps
+echo "Hasura Binary Cache"
+exit 0

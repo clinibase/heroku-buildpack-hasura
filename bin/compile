@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# bin/compile <build-dir> <cache-dir> <env-dir>
+# $HOME: /app
+
+# -e - always exit on error
+# -o pipefail - don't ignore exit codes when piping output
+# set -eo pipefail
+
+BUILD_DIR=${1:-.}
+CACHE_DIR=${2:-}
+ENV_DIR=${3:-}
+BP_DIR=$(cd "$(dirname "${0:-}")"; cd ..; pwd)
+
+HEROKU_DIR=$BUILD_DIR/.heroku
+BIN_DIR=$HEROKU_DIR/bin
+# make directories
+mkdir -p $CACHE_DIR $BIN_DIR
+
+# Export the content of the ENV_DIR into the environment
+if [ -d "$ENV_DIR" ]; then
+  for e in $(ls $ENV_DIR); do
+    export "$e=$(cat $ENV_DIR/$e)"
+  done
+fi
+
+# Set a default version if HASURA_VERSION is not set
+HASURA_IMAGE="${HASURA_IMAGE:-hasura/graphql-engine}"
+HASURA_VERSION=${HASURA_VERSION:-"v2.48.6"}
+
+if [[ -n $HASURA_VERSION ]]
+then
+  # prepend a v to version numbers, eg 1.0.19 -> v1.0.19
+  if [[ $HASURA_VERSION =~ ^[0-9] ]]; then
+    HASURA_VERSION="v${HASURA_VERSION}"
+  fi
+fi
+
+HASURA_IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}.cli-migrations-v3"
+HASURA_ENGINE_BINARY="$CACHE_DIR/graphql-engine"
+HASURA_CLI_BINARY="$CACHE_DIR/hasura-cli"
+
+if [ -f $HASURA_ENGINE_BINARY ] && [ -f $HASURA_CLI_BINARY ]; then
+  echo "-----> Using hasura binaries from cache"
+else
+  echo "Fetching Hasura image {{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3"
+  docker pull "{{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3"
+  CID=$(docker create "{{.HASURA_IMAGE}}:{{.HASURA_VERSION}}.cli-migrations-v3")
+  echo "Copying graphql-engine binary"
+  docker cp "$CID:/bin/graphql-engine" $HASURA_ENGINE_BINARY
+  docker cp "$CID:/bin/hasura-cli" $HASURA_CLI_BINARY
+fi
+
+echo "-----> Setting permissions"
+chmod +x $HASURA_ENGINE_BINARY
+chmod +x $HASURA_CLI_BINARY
+
+echo "-----> Moving binary to the right place"
+cp $HASURA_ENGINE_BINARY $BIN_DIR/graphql-engine
+cp $HASURA_CLI_BINARY $BIN_DIR/hasura-cli
+
+export PATH="$BIN_DIR:$PATH"
+echo "-----> Installed Hasura:"
+graphql-engine version
+hasura-cli version
