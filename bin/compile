@@ -47,7 +47,7 @@ else
     | tar -xz -C "$CACHE_DIR" crane
   chmod +x "$CRANE_BIN"
 
-  echo "-----> Pulling ${IMAGE_TAG} (no Docker) and extracting /bin/graphql-engine
+  echo "-----> Pulling ${IMAGE_TAG} (no Docker) and extracting /bin/graphql-engine"
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
 
