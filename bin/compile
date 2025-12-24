@@ -57,6 +57,7 @@ else
   "$CRANE_BIN" export "$IMAGE_TAG" - \
     | tar -C "$TMP_DIR" -xf - usr/bin/graphql-engine usr/bin/hasura-cli
 
+  rm -f "$CRANE_BIN"
   mv "$TMP_DIR/usr/bin/graphql-engine" "$ENGINE_BIN"
   mv "$TMP_DIR/usr/bin/hasura-cli" "$CLI_BIN"
 fi
