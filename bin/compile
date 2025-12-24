@@ -54,10 +54,10 @@ else
   # crane export emits a tar of the image filesystem.  [oai_citation:3‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
   # IMPORTANT: tar paths must NOT start with '/'.  [oai_citation:4‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
   "$CRANE_BIN" export "$IMAGE_TAG" - \
-    | tar -C "$TMP_DIR" -xf - bin/graphql-engine bin/hasura-cli
+    | tar -C "$TMP_DIR" -xf - usr/bin/graphql-engine usr/bin/hasura-cli
 
-  mv "$TMP_DIR/bin/graphql-engine" "$ENGINE_BIN"
-  mv "$TMP_DIR/bin/hasura-cli" "$CLI_BIN"
+  mv "$TMP_DIR/usr/bin/graphql-engine" "$ENGINE_BIN"
+  mv "$TMP_DIR/usr/bin/hasura-cli" "$CLI_BIN"
 fi
 
 # --------------------------------------------------------------------
