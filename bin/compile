@@ -26,10 +26,9 @@ if [[ $HASURA_VERSION =~ ^[0-9] ]]; then
   HASURA_VERSION="v${HASURA_VERSION}"
 fi
 
-IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}.cli-migrations-v3"
+IMAGE_TAG="${HASURA_IMAGE}:${HASURA_VERSION}"
 
 ENGINE_BIN="$CACHE_DIR/graphql-engine"
-CLI_BIN="$CACHE_DIR/hasura-cli"
 CRANE_BIN="$CACHE_DIR/crane"
 
 OS="linux"
@@ -38,7 +37,7 @@ ARCH="amd64"
 # --------------------------------------------------------------------
 # Fetch binaries from OCI image
 # --------------------------------------------------------------------
-if [ -f "$ENGINE_BIN" ] && [ -f "$CLI_BIN" ]; then
+if [ -f "$ENGINE_BIN" ]; then
   echo "-----> Using Hasura binaries from cache"
 else
   echo "-----> Installing crane (for daemonless image export)"
@@ -48,24 +47,23 @@ else
     | tar -xz -C "$CACHE_DIR" crane
   chmod +x "$CRANE_BIN"
 
-  echo "-----> Pulling ${IMAGE_TAG} (no Docker) and extracting /bin/graphql-engine and /bin/hasura-cli"
+  echo "-----> Pulling ${IMAGE_TAG} (no Docker) and extracting /bin/graphql-engine
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
 
   # crane export emits a tar of the image filesystem.  [oai_citation:3‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
   # IMPORTANT: tar paths must NOT start with '/'.  [oai_citation:4‡GitHub](https://github.com/google/go-containerregistry/blob/main/cmd/crane/recipes.md?utm_source=chatgpt.com)
   "$CRANE_BIN" export "$IMAGE_TAG" - \
-    | tar -C "$TMP_DIR" -xf - usr/bin/graphql-engine usr/bin/hasura-cli
+    | tar -C "$TMP_DIR" -xf - usr/bin/graphql-engine
 
   rm -f "$CRANE_BIN"
   mv "$TMP_DIR/usr/bin/graphql-engine" "$ENGINE_BIN"
-  mv "$TMP_DIR/usr/bin/hasura-cli" "$CLI_BIN"
 fi
 
 # --------------------------------------------------------------------
 # Install
 # --------------------------------------------------------------------
-chmod +x "$ENGINE_BIN" "$CLI_BIN"
+chmod +x "$ENGINE_BIN"
 
 cp_or_mv_cmd="mv"
 if [ "$HASURA_CACHE_ENABLED" = "true" ]; then
@@ -73,10 +71,8 @@ if [ "$HASURA_CACHE_ENABLED" = "true" ]; then
 fi
 
 $cp_or_mv_cmd "$ENGINE_BIN" "$BIN_DIR/graphql-engine"
-$cp_or_mv_cmd "$CLI_BIN" "$BIN_DIR/hasura-cli"
 
 export PATH="$BIN_DIR:$PATH"
 
 echo "-----> Installed Hasura:"
 graphql-engine version
-hasura-cli version
