@@ -20,6 +20,7 @@ fi
 # Versions
 HASURA_IMAGE="${HASURA_IMAGE:-hasura/graphql-engine}"
 HASURA_VERSION="${HASURA_VERSION:-v2.48.6}"
+HASURA_CACHE_ENABLED="${HASURA_CACHE_ENABLED:-true}"
 
 if [[ $HASURA_VERSION =~ ^[0-9] ]]; then
   HASURA_VERSION="v${HASURA_VERSION}"
@@ -65,8 +66,13 @@ fi
 # --------------------------------------------------------------------
 chmod +x "$ENGINE_BIN" "$CLI_BIN"
 
-cp "$ENGINE_BIN" "$BIN_DIR/graphql-engine"
-cp "$CLI_BIN" "$BIN_DIR/hasura-cli"
+cp_or_mv_cmd="mv"
+if [ "$HASURA_CACHE_ENABLED" = "true" ]; then
+  cp_or_mv_cmd="cp"
+fi
+
+$cp_or_mv_cmd "$ENGINE_BIN" "$BIN_DIR/graphql-engine"
+$cp_or_mv_cmd "$CLI_BIN" "$BIN_DIR/hasura-cli"
 
 export PATH="$BIN_DIR:$PATH"
 
